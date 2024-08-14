@@ -1,0 +1,16 @@
+steps:
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud functions deploy subotnik-bot \
+        --runtime python310 \
+        --trigger-http \
+        --allow-unauthenticated \
+        --entry-point main \
+        --region europe-west1
+
+# Optionally add notifications or post-deployment steps here
+
+timeout: '600s'
