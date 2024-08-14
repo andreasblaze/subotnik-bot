@@ -1,6 +1,7 @@
 import logging
 import telegram
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+from flask import Flask, request
 from datetime import datetime, time, timedelta
 import random
 import config
@@ -10,7 +11,16 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-chat_id   = config.chat_id
+# Initialize Flask app
+app = Flask(__name__)
+
+# Set up the bot using the token provided by BotFather
+bot = telegram.Bot(config.TOKEN)
+
+# Create a dispatcher
+dispatcher = Dispatcher(bot, None, workers=0)
+
+chat_id = config.chat_id
 
 # Define the special words and corresponding funny messages
 special_words = config.special_words
@@ -30,17 +40,13 @@ def help(update, context):
 
 # Define the callback function for the /setreminder command
 def setreminder(update, context):
-    # Get the current time and calculate the time of the next reminder
     now = datetime.now().time()
-    reminder_time = time(hour=12) # Set the reminder time to noon
+    reminder_time = time(hour=12)  # Set the reminder time to noon
     if now >= reminder_time:
-        # If it's already past noon today, schedule the next reminder for next week
         reminder_date = datetime.today() + timedelta(days=(7 - datetime.today().weekday()))
     else:
-        # Otherwise, schedule the next reminder for this week
         reminder_date = datetime.today() + timedelta(days=(reminder_time.weekday() - datetime.today().weekday()))
 
-    # Schedule the reminder message using the job queue
     context.job_queue.run_once(sendreminder, when=reminder_date.time(), context=update.message.chat_id)
 
     context.bot.send_message(chat_id=update.message.chat_id,
@@ -53,38 +59,33 @@ def sendreminder(context):
 
 # Define the callback function for handling special words
 def specialword(update, context):
-    # Get the user's message text and check if it contains a special word
     message = update.message
     if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
-        # If the message is a reply to the bot, get the original message text
         message_text = message.reply_to_message.text.lower()
     else:
-        # Otherwise, get the current message text
         message_text = message.text.lower()
 
-    # Send the response message or image
     if message_text in special_words:
-        response         = random.choice(special_words[message_text])
-        default_response = random.choice(default_response)
+        response = random.choice(special_words[message_text])
         context.bot.send_message(chat_id=update.message.chat_id, text=response)
-        
     elif update.message.photo:
         context.bot.send_message(chat_id=update.message.chat_id, text="Гарна картинка! Де це було спізжено?")
     else:
-        context.bot.send_message(chat_id=update.message.chat_id, text=default_response)
+        context.bot.send_message(chat_id=update.message.chat_id, text=random.choice(default_response))
 
+# Add command and message handlers to the dispatcher
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CommandHandler('help', help))
+dispatcher.add_handler(CommandHandler('setreminder', setreminder))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, specialword))
 
+@app.route('/', methods=['POST'])
+def webhook():
+    if request.method == "POST":
+        update = telegram.Update.de_json(request.get_json(force=True), bot)
+        dispatcher.process_update(update)
+    return "ok"
 
-# Set up the bot using the token provided by BotFather
-bot = telegram.Bot(config.TOKEN)
-
-# Create an Updater object and attach the relevant handlers
-updater = Updater(config.TOKEN, use_context=True)
-updater.dispatcher.add_handler(CommandHandler('start', start))
-updater.dispatcher.add_handler(CommandHandler('help', help))
-updater.dispatcher.add_handler(CommandHandler('setreminder', setreminder))
-updater.dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, specialword))
-
-# Start the bot and schedule the weekly reminder message
-updater.start_polling()
-updater.idle()
+# Entry point for Google Cloud Function
+def main(request):
+    return webhook()
