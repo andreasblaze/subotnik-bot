@@ -34,4 +34,5 @@ jobs:
         --allow-unauthenticated \
         --entry-point main \
         --region europe-west1  \
+        --gen2 \
         --set-env-vars TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }},TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
