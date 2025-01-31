@@ -1,6 +1,6 @@
 import logging
 import telegram
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from flask import Flask, request
 from datetime import datetime, timedelta
 import pytz
@@ -30,8 +30,8 @@ USAGE_FILE = "usage.json"
 # Define Kyiv timezone
 kyiv_tz = pytz.timezone("Europe/Kyiv")
 
-# Create a dispatcher
-dispatcher = Dispatcher(bot, None, workers=0)
+# Create a app
+app = Application.builder().token(config.TOKEN).build()
 
 # Function to initialize or load usage tracking
 def load_usage():
@@ -81,7 +81,7 @@ def ai_response(prompt):
 def start(update, context):
     context.bot.send_message(
         chat_id=update.message.chat_id,
-        text="Привіт! Я бот, який може допомогти з нагадуваннями, голосовими чатами та навіть штучним інтелектом!"
+        text="Якщо вже так вийшло, що у тебе деменція, то можу допомогти з нагадуваннями, голосовими чатами та навіть з мисленням, мовленням і виконанням повсякденних завдань."
     )
 
 # Callback for /help command
@@ -89,7 +89,7 @@ def help(update, context):
     context.bot.send_message(
         chat_id=update.message.chat_id,
         text="Команди:\n/start - Почати\n/help - Допомога\n/setreminder - Установити нагадування\n"
-             "Просто напишіть до мене, щоб отримати відповідь від штучного інтелекту!"
+             "Якщо хочеш щось сказати - кажи. Не мучай жопу, якщо срати перехтів."
     )
 
 # Callback for handling text messages
@@ -98,16 +98,16 @@ def handle_message(update, context):
     response = ai_response(message)
     context.bot.send_message(chat_id=update.message.chat_id, text=response)
 
-# Add handlers to the dispatcher
-dispatcher.add_handler(CommandHandler('start', start))
-dispatcher.add_handler(CommandHandler('help', help))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+# Add handlers to the app
+app.add_handler(CommandHandler('start', start))
+app.add_handler(CommandHandler('help', help))
+app.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
 @app.route('/', methods=['POST'])
 def webhook():
     if request.method == "POST":
         update = telegram.Update.de_json(request.get_json(force=True), bot)
-        dispatcher.process_update(update)
+        app.process_update(update)
     return "ok"
 
 # Entry point for Google Cloud Function
