@@ -60,7 +60,7 @@ def ai_response(prompt):
     global usage_data
 
     if usage_data["tokens_used"] >= DAILY_TOKEN_LIMIT:
-        return "Вибачте, ліміт використання OpenAI API на сьогодні вичерпано."
+        return "Так, цей, ліміт використання OpenAI API на сьогодні вичерпано. Не нахабнійте"
 
     try:
         response = openai.Completion.create(
@@ -75,7 +75,7 @@ def ai_response(prompt):
         return response.choices[0].text.strip()
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
-        return "Вибачте, я не можу відповісти зараз."
+        return "Вибач, якась трабла з токеном OpenAI. Спробуй ще раз, мб пощастить"
 
 # Callback for /start command
 def start(update, context):
