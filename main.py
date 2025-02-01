@@ -1,11 +1,10 @@
 import logging
 import telegram
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, async_to_sync
 from flask import Flask, request
 from datetime import datetime, timedelta
 import pytz
-import random
 import openai  # OpenAI API
 import config
 import json
@@ -35,23 +34,23 @@ def load_usage():
     with open(USAGE_FILE, "r") as f:
         return json.load(f)
 
-def save_usage(data):
+async def save_usage(data):
     with open(USAGE_FILE, "w") as f:
         json.dump(data, f)
 
 usage_data = load_usage()
 
 # Reset usage counter if a new day has started
-def reset_usage_if_new_day():
+async def reset_usage_if_new_day():
     global usage_data
     current_date = str(datetime.now(kyiv_tz).date())
     if usage_data["date"] != current_date:
         usage_data = {"date": current_date, "tokens_used": 0}
-        save_usage(usage_data)
+        await save_usage(usage_data)
 
 # Function for OpenAI response with token tracking
 async def ai_response_async(prompt):
-    reset_usage_if_new_day()
+    await reset_usage_if_new_day()
     global usage_data
 
     if usage_data["tokens_used"] >= DAILY_TOKEN_LIMIT:
@@ -59,15 +58,15 @@ async def ai_response_async(prompt):
 
     try:
         response = await openai.ChatCompletion.acreate(
-            engine="gpt-3.5-turbo",
-            prompt=prompt,
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
             max_tokens=150,
             temperature=0.7
         )
-        tokens_used = response.usage["total_tokens"]
+        tokens_used = response["usage"]["total_tokens"]
         usage_data["tokens_used"] += tokens_used
-        save_usage(usage_data)
-        return response.choices[0].text.strip()
+        await save_usage(usage_data)
+        return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
         return "Вибач, якась трабла з API OpenAI. Спробуй ще раз, мб пощастить"
@@ -88,7 +87,9 @@ async def help(update: Update, context: CallbackContext):
 # Callback for handling text messages
 async def handle_message(update: Update, context: CallbackContext):
     message = update.message.text
+    logger.info(f"Handling message: {message}")  # Log received message
     response = await ai_response_async(message)
+    logger.info(f"Total tokens used today: {usage_data['tokens_used']}/{DAILY_TOKEN_LIMIT}")  # Log token usage
     await update.message.reply_text(response)
 
 # Set up the Telegram bot application
@@ -103,9 +104,13 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 def webhook():
     if request.method == "POST":
         update = Update.de_json(request.get_json(force=True), application.bot)
-        application.process_update(update)
+        async_to_sync(application.process_update)(update)  # async handling
     return "ok"
 
 # Entry point for Google Cloud Function
-def main(request):
-    return webhook()
+def main():
+    application.run_polling()  #Runs bot properly
+
+# Checks if the script executed directly and not when imported as a module in another script
+if __name__ == "__main__":
+    main()
