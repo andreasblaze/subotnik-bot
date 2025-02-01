@@ -1,5 +1,6 @@
 import logging
 import telegram
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from flask import Flask, request
 from datetime import datetime, timedelta
@@ -14,11 +15,8 @@ import os
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Flask app
+# Initialize Flask app (needed for webhooks)
 app = Flask(__name__)
-
-# Set up the bot using the token provided by BotFather
-bot = telegram.Bot(config.TOKEN)
 
 # OpenAI API key
 openai.api_key = config.OPENAI_API_KEY
@@ -29,9 +27,6 @@ USAGE_FILE = "usage.json"
 
 # Define Kyiv timezone
 kyiv_tz = pytz.timezone("Europe/Kyiv")
-
-# Create a app
-app = Application.builder().token(config.TOKEN).build()
 
 # Function to initialize or load usage tracking
 def load_usage():
@@ -55,7 +50,7 @@ def reset_usage_if_new_day():
         save_usage(usage_data)
 
 # Function for OpenAI response with token tracking
-def ai_response(prompt):
+async def ai_response_async(prompt):
     reset_usage_if_new_day()
     global usage_data
 
@@ -63,7 +58,7 @@ def ai_response(prompt):
         return "Так, цей, ліміт використання OpenAI API на сьогодні вичерпано. Не нахабнійте"
 
     try:
-        response = openai.Completion.create(
+        response = await openai.ChatCompletion.acreate(
             engine="gpt-3.5-turbo",
             prompt=prompt,
             max_tokens=150,
@@ -75,39 +70,40 @@ def ai_response(prompt):
         return response.choices[0].text.strip()
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
-        return "Вибач, якась трабла з токеном OpenAI. Спробуй ще раз, мб пощастить"
+        return "Вибач, якась трабла з API OpenAI. Спробуй ще раз, мб пощастить"
 
 # Callback for /start command
-def start(update, context):
-    context.bot.send_message(
-        chat_id=update.message.chat_id,
-        text="Якщо вже так вийшло, що у тебе деменція, то можу допомогти з нагадуваннями, голосовими чатами та навіть з мисленням, мовленням і виконанням повсякденних завдань."
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text(
+        "Якщо вже так вийшло, що у тебе деменція, то можу допомогти з нагадуваннями, голосовими чатами та навіть з мисленням, мовленням і виконанням повсякденних завдань."
     )
 
 # Callback for /help command
-def help(update, context):
-    context.bot.send_message(
-        chat_id=update.message.chat_id,
-        text="Команди:\n/start - Почати\n/help - Допомога\n/setreminder - Установити нагадування\n"
-             "Якщо хочеш щось сказати - кажи. Не мучай жопу, якщо срати перехтів."
+async def help(update: Update, context: CallbackContext):
+    await update.message.reply_text(
+        "Команди:\n/start - Почати\n/help - Допомога\n/setreminder - Установити нагадування\n"
+        "Якщо хочеш щось сказати - кажи. Не мучай жопу, якщо срати перехтів."
     )
 
 # Callback for handling text messages
-def handle_message(update, context):
+async def handle_message(update: Update, context: CallbackContext):
     message = update.message.text
-    response = ai_response(message)
-    context.bot.send_message(chat_id=update.message.chat_id, text=response)
+    response = await ai_response_async(message)
+    await update.message.reply_text(response)
+
+# Set up the Telegram bot application
+application = Application.builder().token(config.TOKEN).build()
 
 # Add handlers to the app
-app.add_handler(CommandHandler('start', start))
-app.add_handler(CommandHandler('help', help))
-app.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+application.add_handler(CommandHandler('start', start))
+application.add_handler(CommandHandler('help', help))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-@app.route('/', methods=['POST'])
+@app.route("/", methods=["POST"])
 def webhook():
     if request.method == "POST":
-        update = telegram.Update.de_json(request.get_json(force=True), bot)
-        app.process_update(update)
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        application.process_update(update)
     return "ok"
 
 # Entry point for Google Cloud Function
