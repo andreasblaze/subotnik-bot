@@ -1,7 +1,7 @@
 import logging
 import telegram
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, async_to_sync
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from flask import Flask, request
 from datetime import datetime, timedelta
 import pytz
@@ -101,10 +101,11 @@ application.add_handler(CommandHandler('help', help))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 @app.route("/", methods=["POST"])
-def webhook():
+# a way to send Telegram updates
+async def webhook():
     if request.method == "POST":
         update = Update.de_json(request.get_json(force=True), application.bot)
-        async_to_sync(application.process_update)(update)  # async handling
+        await application.process_update(update)
     return "ok"
 
 # Entry point for Google Cloud Function
