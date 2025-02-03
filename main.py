@@ -2,13 +2,14 @@ import logging
 import telegram
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 import pytz
-import openai  # OpenAI API
+import openai
 import config
 import json
 import os
+import asyncio
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -100,18 +101,23 @@ application.add_handler(CommandHandler('start', start))
 application.add_handler(CommandHandler('help', help))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+# webhook function for GCP
 @app.route("/", methods=["POST"])
-# a way to send Telegram updates
-async def webhook():
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        await application.process_update(update)
-    return "ok"
+def webhook(request):
+    try:
+        request_data = request.get_json(force=True)
+        logger.info(f"Incoming Telegram update: {request_data}")  # logs incoming updates
+
+        update = Update.de_json(request_data, application.bot)
+
+        # to run async processing without blocking Flask
+        asyncio.create_task(application.process_update(update))
+
+        return jsonify({"status": "ok"}), 200  # return JSON response
+    except Exception as e:
+        logger.error(f"Error in webhook: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 # Entry point for Google Cloud Function
-def main():
-    application.run_polling()  #Runs bot properly
-
-# Checks if the script executed directly and not when imported as a module in another script
-if __name__ == "__main__":
-    main()
+def main(request):
+    return webhook(request)
