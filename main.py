@@ -118,6 +118,11 @@ def webhook(request):
         logger.error(f"Error in webhook: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+# to initialize and process updates
+async def initialize_and_process_update(update):
+    await application.initialize()
+    await application.process_update(update)
+
 # Entry point for Google Cloud Function
 def main(request):
     return webhook(request)
