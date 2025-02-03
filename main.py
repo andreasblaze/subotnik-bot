@@ -111,7 +111,7 @@ def webhook(request):
         update = Update.de_json(request_data, application.bot)
 
         # to run async processing without blocking Flask
-        asyncio.create_task(application.process_update(update))
+        asyncio.run(application.process_update(update))
 
         return jsonify({"status": "ok"}), 200  # return JSON response
     except Exception as e:
