@@ -110,8 +110,10 @@ def webhook(request):
 
         update = Update.de_json(request_data, application.bot)
 
-        # to run async processing without blocking Flask
-        asyncio.run(application.process_update(update))
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        loop.run_until_complete(initialize_and_process_update(update))
 
         return jsonify({"status": "ok"}), 200  # return JSON response
     except Exception as e:
@@ -120,8 +122,9 @@ def webhook(request):
 
 # to initialize and process updates
 async def initialize_and_process_update(update):
-    await application.initialize()
+    await application.initialize()  # ensure the bot is initialized
     await application.process_update(update)
+    await application.shutdown()  # clean up resources after processing
 
 # Entry point for Google Cloud Function
 def main(request):
